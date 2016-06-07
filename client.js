@@ -5,6 +5,35 @@
 var headEl = document.getElementsByTagName('head')[0],
     ie = /MSIE/.test(navigator.userAgent);
 
+function mapPath(path) {
+  for (var pre in System.map) {
+    if (path.indexOf(pre) === 0) {
+      return System.map[pre] + path.substring(pre.length);
+    }
+  }
+  return path;
+}
+
+function addSuffix(fileName) {
+  return (fileName.indexOf('.js') === -1) ?
+    fileName + '.js' :
+    fileName;
+}
+
+function addBase(path) {
+  return (System.baseURL || '/') + path;
+}
+
+function getMain(path) {
+  var pkg, main;
+  if ((pkg = System.packages[path])) {
+    if ((main = pkg.main)) {
+      return path + '/' + main;
+    }
+  }
+  return path;
+}
+
 /*
   normalizeName() is inspired by Ember's loader:
   https://github.com/emberjs/ember.js/blob/0591740685ee2c444f2cfdbcebad0bebd89d1303/packages/loader/lib/main.js#L39-L53
@@ -14,7 +43,7 @@ function normalizeName(child, parentBase) {
         child = child.slice(1);
     }
     if (child.charAt(0) !== '.') {
-        return child;
+        return addSuffix(getMain(mapPath(child)));
     }
     var parts = child.split('/');
     while (parts[0] === '.' || parts[0] === '..') {
@@ -22,12 +51,14 @@ function normalizeName(child, parentBase) {
             parentBase.pop();
         }
     }
-    return parentBase.concat(parts).join('/');
+    return addSuffix(getMain(mapPath(parentBase.concat(parts).join('/'))));
 }
 
 var seen = Object.create(null);
 var internalRegistry = Object.create(null);
 var externalRegistry = Object.create(null);
+var pendingLoads = Object.create(null);
+var pendingImports = Object.create(null);
 var anonymousEntry;
 
 function ensuredExecute(name) {
@@ -52,6 +83,10 @@ function has(name) {
     return !!externalRegistry[name] || !!internalRegistry[name];
 }
 
+function normalizeNameAndGet(name) {
+  return get(normalizeName(name));
+}
+
 function createScriptNode(src, callback) {
     var node = document.createElement('script');
     // use async=false for ordered async?
@@ -74,8 +109,8 @@ function createScriptNode(src, callback) {
 }
 
 function load(name) {
-    return new Promise(function(resolve, reject) {
-        createScriptNode((System.baseURL || '/') + name + '.js', function(err) {
+    pendingLoads[name] = new Promise(function(resolve, reject) {
+        createScriptNode(addBase(name), function(err) {
             if (anonymousEntry) {
                 System.register(name, anonymousEntry[0], anonymousEntry[1]);
                 anonymousEntry = undefined;
@@ -89,10 +124,15 @@ function load(name) {
                 if (externalRegistry[dep] || internalRegistry[dep]) {
                     return Promise.resolve();
                 }
-                return load(dep);
+                if (pendingLoads[dep]) {
+                  return pendingLoads[dep];
+                }
+                pendingLoads[dep] = load(dep);
+                return pendingLoads[dep];
             })).then(resolve, reject);
         });
     });
+    return pendingLoads[name];
 }
 
 
@@ -101,13 +141,17 @@ var System = {
     get: get,
     has: has,
     import: function(name) {
-        return new Promise(function(resolve, reject) {
+        if (pendingImports[name]) {
+          return pendingImports[name];
+        }
+        pendingImports[name] = new Promise(function(resolve, reject) {
             var normalizedName = normalizeName(name, []);
             var mod = get(normalizedName);
             return mod ? resolve(mod) : load(name).then(function () {
-                return get(normalizedName);
+                resolve(get(normalizedName));
             });
         });
+        return pendingImports[name];
     },
     register: function(name, deps, wrapper) {
         if (Array.isArray(name)) {
@@ -153,7 +197,25 @@ var System = {
         };
         // collecting execute() and setters[]
         meta = wrapper(function(identifier, value) {
-            values[identifier] = value;
+            function initValue(id, value) {
+              values[id] = value;
+              if (!Object.getOwnPropertyDescriptor(proxy, id)) {
+                  Object.defineProperty(proxy, id, {
+                      enumerable: true,
+                      get: function() {
+                          return values[id];
+                      }
+                  });
+              }
+            }
+            if (typeof identifier === 'object') {
+              for (var id in identifier) {
+                initValue(id, identifier[id]);
+              }
+            }
+            else {
+              initValue(identifier, value);
+            }
             mod.lock = true; // locking down the updates on the module to avoid infinite loop
             mod.dependants.forEach(function(moduleName) {
                 if (internalRegistry[moduleName] && !internalRegistry[moduleName].lock) {
@@ -161,16 +223,52 @@ var System = {
                 }
             });
             mod.lock = false;
-            if (!Object.getOwnPropertyDescriptor(proxy, identifier)) {
-                Object.defineProperty(proxy, identifier, {
-                    enumerable: true,
-                    get: function() {
-                        return values[identifier];
-                    }
-                });
-            }
             return value;
         });
+    },
+    registerDynamic: function (name, deps, executingRequire, declare) {
+      if (Array.isArray(name)) {
+          // anounymous module
+          anonymousEntry = [];
+          anonymousEntry.push.apply(anonymousEntry, arguments);
+          return; // breaking to let the script tag to name it.
+      }
+      var //proxy = Object.create(null),
+          // values = Object.create(null),
+          mod;
+      // creating a new entry in the internal registry
+      internalRegistry[name] = mod = {
+          // live bindings
+          // proxy: values,
+          // exported values
+          // values: values,
+          // normalized deps
+          deps: deps.map(function(dep) {
+              return normalizeName(dep, name.split('/').slice(0, -1));
+          }),
+          // other modules that depends on this so we can push updates into those modules
+          dependants: [],
+          // method used to push updates of deps into the module body
+          // update: function(moduleName, moduleObj) {
+          //     console.log('Update no-op');
+          //     // meta.setters[mod.deps.indexOf(moduleName)](moduleObj);
+          // },
+          execute: function() {
+              function normalizeDepNameAndGet(depName) {
+                return get(normalizeName(depName, name.split('/').slice(0, -1))).default;
+              }
+              declare(normalizeDepNameAndGet, null, mod);
+              mod.proxy = {default: mod.exports};
+              mod.values = mod.proxy;
+              // mod.lock = true; // locking down the updates on the module to avoid infinite loop
+              // mod.dependants.forEach(function(moduleName) {
+              //     if (internalRegistry[moduleName] && !internalRegistry[moduleName].lock) {
+              //         internalRegistry[moduleName].update(name, values);
+              //     }
+              // });
+              // mod.lock = false;
+          }
+      };
     }
 };
 
