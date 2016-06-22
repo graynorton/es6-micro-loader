@@ -94,9 +94,11 @@ var headEl = document.getElementsByTagName('head')[0],
 function mapPath(path, packagePath) {
   var pkg = packagePath && systemConfig.packages[packagePath];
 
-  return (pkg && pkg.map && _mapPath(path, pkg.map)) ||
+  var mapped = (pkg && pkg.map && _mapPath(path, pkg.map)) ||
     _mapPath(path, systemConfig.map) ||
     path;
+
+  return mapped;
 }
 
 function _mapPath(path, map) {
@@ -107,18 +109,44 @@ function _fastMapPath(path, map) {
   return map[path];
 }
 
-function _fullMapPath(path, map) {
+function matchPrefix(path, map) {
   for (var pre in map) {
     if (path.indexOf(pre) === 0) {
-      return map[pre] + path.substring(pre.length);
+      return pre;
     }
   }
 }
 
-function addSuffix(fileName) {
-  return (fileName.indexOf('.js') === -1) ?
-    fileName + '.js' :
-    fileName;
+function _fullMapPath(path, map) {
+  var pre = matchPrefix(path, map);
+  if (pre) return map[pre] + path.substring(pre.length);
+}
+
+function lastPassPathSubstitution(path) {
+  return _fullMapPath(path, systemConfig.paths) || path;
+}
+
+function getPackagePath(path) {
+  return matchPrefix(path, systemConfig.packages);
+}
+
+function getPackageConfig(path) {
+  var packagePath = getPackagePath(path);
+  if (packagePath) return systemConfig.packages[packagePath];
+}
+
+function getExtension(path) {
+  var packageConfig = getPackageConfig(path);
+  var pkgDefault = packageConfig && packageConfig.defaultExtension;
+  if (pkgDefault) return pkgDefault;
+  if (systemConfig.defaultJSExtensions) return 'js';
+}
+
+function addExtension(path) {
+  if (path.match(/\.(js|html|css|json)$/)) return path;
+  var ext = getExtension(path);
+  if (ext) return path + '.' + ext;
+  return path;
 }
 
 function addBase(path) {
@@ -139,20 +167,44 @@ function getMain(path) {
   normalizeName() is inspired by Ember's loader:
   https://github.com/emberjs/ember.js/blob/0591740685ee2c444f2cfdbcebad0bebd89d1303/packages/loader/lib/main.js#L39-L53
  */
-function normalizeName(child, parentBase) {
+function normalizeName(child, requestorPath) {
+  return new Promise(function(resolve, reject) {
     if (child.charAt(0) === '/') {
         child = child.slice(1);
     }
     if (child.charAt(0) !== '.') {
-        return addSuffix(getMain(mapPath(child)));
+      var extendrp = requestorPath ?
+        extendPackageConfig(requestorPath) :
+        Promise.resolve();
+
+      return extendrp.then(function() {
+        var mappedChild = mapPath(child, requestorPath);
+        return extendPackageConfig(mappedChild).then(function() {
+          return resolve(addExtension(getMain(mappedChild)));
+        })
+      });
+        // if (requestorPath) {
+        //   return extendPackageConfig(requestorPath).then(function() {
+        //     return extendPackageConfig(child).then(function() {
+        //       return resolve(addExtension(getMain(mapPath(child, requestorPath))));
+        //     });
+        //   });
+        // }
+        // else {
+        //   return resolve(addExtension(getMain(mapPath(child))));
+        // }
     }
+    var rpParts = requestorPath ?
+      requestorPath.split('/').slice(0, -1) :
+      [];
     var parts = child.split('/');
     while (parts[0] === '.' || parts[0] === '..') {
         if (parts.shift() === '..') {
-            parentBase.pop();
+            rpParts.pop();
         }
     }
-    return addSuffix(getMain(mapPath(parentBase.concat(parts).join('/'))));
+    return resolve(addExtension(getMain(rpParts.concat(parts).join('/'))));
+  });
 }
 
 var seen = Object.create(null);
@@ -161,6 +213,7 @@ var externalRegistry = Object.create(null);
 var pendingLoads = Object.create(null);
 var pendingImports = Object.create(null);
 var systemConfig = Object.create(null);
+var extendedConfigs = Object.create(null);
 var anonymousEntry;
 
 // function ensuredExecute(name) {
@@ -186,8 +239,38 @@ function has(name) {
     return !!externalRegistry[name] || !!internalRegistry[name];
 }
 
-function normalizeNameAndGet(name) {
-  return get(normalizeName(name));
+function addPackageConfigExpressions(inCfg) {
+  if (inCfg.packageConfigPaths) {
+    var patterns = inCfg.packageConfigPaths.map(function(pattern) {
+      var ext = '.json';
+      var subpaths = pattern.split('/');
+      var numSub = subpaths.length;
+      var filename = subpaths[numSub - 1].replace(ext, '');
+      if (filename.lastIndexOf('*') === filename.length - 1) {
+        subpaths[numSub - 1] = filename;
+        filename = undefined;
+      }
+      else {
+        subpaths.length = numSub - 1;
+      }
+      var exprStr = subpaths.reduce(function(head, sub) {
+        return head + sub.replace('*', '[^/]+/');
+      }, '^');
+      var expr = new RegExp(exprStr.substr(0, exprStr.length - 1));
+      var suf = filename ? '/' + filename + ext : ext;
+      return function(path) {
+        var match = path.match(expr);
+        if (match) {
+          var pkg = match[0].replace(/\.json$/, '');
+          return {
+            config: pkg + suf,
+            package: pkg
+          };
+        }
+      };
+    });
+    systemConfig.packageConfigPaths = patterns;
+  }
 }
 
 function config(inCfg) {
@@ -195,7 +278,11 @@ function config(inCfg) {
     systemConfig[prop] = systemConfig[prop] || {};
     assign(systemConfig[prop], inCfg[prop]);
   });
+
   if (inCfg.baseURL) systemConfig.baseURL = inCfg.baseURL;
+  if (inCfg.defaultJSExtensions) systemConfig.defaultJSExtensions = inCfg.defaultJSExtensions;
+
+  addPackageConfigExpressions(inCfg);
 }
 
 function createScriptNode(src, callback) {
@@ -219,50 +306,129 @@ function createScriptNode(src, callback) {
     headEl.appendChild(node);
 }
 
+function AJAX(url, callback) {
+  var r = new XMLHttpRequest();
+  r.onreadystatechange = function() {
+    if (r.readyState === XMLHttpRequest.DONE) {
+      if (r.status === 200) {
+        callback(r.responseText);
+      }
+      else {
+        console.log('waah.', r.status);
+        // callback(new Error());
+      }
+    }
+  };
+  r.open('GET', url);
+  r.send();
+}
+
+function mergeConfig(pkgName, inCfgModule) {
+  var cfg = systemConfig.packages[pkgName] || {};
+  systemConfig.packages[pkgName] = cfg;
+  var inCfg = inCfgModule.default;
+  for (var prop in inCfg) {
+    var inVal = inCfg[prop];
+    if (typeof inVal === 'object') {
+      cfg[prop] = assign(cfg[prop] || {}, inVal);
+    }
+    else {
+      cfg[prop] = inVal;
+    }
+  }
+  console.log(systemConfig.packages[pkgName]);
+}
+
+function extendPackageConfig(name) {
+  var pcps = systemConfig.packageConfigPaths;
+  // if (!pcps) return Promise.reject();
+  if (!pcps) return Promise.resolve();
+  var num = pcps ? pcps.length : 0;
+  for (var i = 0; i < num; i++) {
+    var match = pcps[i](name);
+    if (match && match.config !== name) {
+      if (!extendedConfigs[match.package]) {
+        extendedConfigs[match.package] = _import(match.config).then(function(cfgModule) {
+          mergeConfig(match.package, cfgModule);
+        });
+      }
+      return extendedConfigs[match.package];
+    }
+  }
+  // return Promise.reject();
+  return Promise.resolve();
+}
+
 function load(name) {
     if (pendingLoads[name]) return pendingLoads[name];
-
+    var path = addBase(lastPassPathSubstitution(name));
     pendingLoads[name] = new Promise(function(resolve, reject) {
-        createScriptNode(addBase(name), function(err) {
+        // createScriptNode(path, function(err) {
+        AJAX(path, function(content) {
+            if (content instanceof Error) return reject(content);
+            try {
+              /*jshint -W054 */
+              var f = new Function('System', content);
+              f(System);
+              // if (ext === '.js') {
+              //   /*jshint -W054 */
+              //   var f = new Function('System', content);
+              //   f(System);
+              // }
+              // if (ext === '.json') {
+              //   resolve(JSON.parse(content));
+              // }
+            }
+            catch (e) {
+              console.log(name, path, e);
+              return reject(e);
+            }
             if (anonymousEntry) {
                 System.register(name, anonymousEntry[0], anonymousEntry[1]);
                 anonymousEntry = undefined;
             }
             var mod = internalRegistry[name];
             if (!mod) {
-                reject(new Error('Error loading module ' + name));
-                return;
+                return reject(new Error('Error loading module ' + name));
             }
-            Promise.all(mod.deps.map(function (dep) {
-                // if (externalRegistry[dep] || internalRegistry[dep]) {
-                //     return Promise.resolve();
-                // }
+            return mod.deps.then(function(nDeps) {
+              Promise.all(nDeps.map(function(dep) {
                 return load(dep);
-            })).then(function() {
-              resolve(mod);
+              })).then(function() {
+                resolve(mod);
+              });
             });
         });
     });
     return pendingLoads[name];
 }
 
-function __import(name, skipNormalization) {
-    var nName = skipNormalization ? name : normalizeName(name, []);
-    if (pendingImports[nName]) {
+function __import(name) {
+    return normalizeName(name).then(function(nName) {
+      if (pendingImports[nName]) {
+        return pendingImports[nName];
+      }
+      pendingImports[nName] = new Promise(function(resolve, reject) {
+          var ext = externalRegistry[nName];
+          if (ext) resolve(ext);
+
+          var int = internalRegistry[nName];
+          if (int) return resolve(int.execute());
+
+          return load(nName)
+            .then(function(loaded) {
+                resolve(loaded.execute());
+            })
+            .catch(function(reason) {
+              console.log('load failed');
+              // return extendPackageConfig(name)
+              //   .then(function() {
+              //     return __import(name);
+              //   });
+            });
+      });
       return pendingImports[nName];
-    }
-    pendingImports[nName] = new Promise(function(resolve, reject) {
-        var ext = externalRegistry[nName];
-        if (ext) resolve(ext);
-
-        var int = internalRegistry[nName];
-        if (int) resolve(int.execute());
-
-        return load(nName).then(function(loaded) {
-            resolve(loaded.execute());
-        });
     });
-    return pendingImports[nName];
 }
 
 function _import(name) {
@@ -294,18 +460,30 @@ var System = {
             // exported values
             values: values,
             // normalized deps
-            deps: deps.map(function(dep) {
-                return normalizeName(dep, name.split('/').slice(0, -1));
+            deps: new Promise(function(resolve, reject) {
+              var nDeps = [];
+              Promise.all(deps.map(function(dep) {
+                var idx = deps.indexOf(dep);
+                return normalizeName(dep, name).then(function(nName) {
+                  nDeps[idx] = nName;
+                  return nName;
+                });
+              })).then(function() {
+                return resolve(nDeps);
+              });
             }),
             // other modules that depends on this so we can push updates into those modules
             dependants: [],
             // method used to push updates of deps into the module body
             update: function(moduleName, moduleObj) {
-                meta.setters[mod.deps.indexOf(moduleName)](moduleObj);
+                mod.deps.then(function(nDeps) {
+                  meta.setters[nDeps.indexOf(moduleName)](moduleObj);
+                });
             },
             execute: function() {
               return new Promise(function(resolve, reject) {
-                return Promise.all(mod.deps.map(function(depName) {
+                return mod.deps.then(function(nDeps) {
+                  return Promise.all(nDeps.map(function(depName) {
                     var dep = externalRegistry[depName];
                     if (dep) {
                         mod.update(depName, dep.values);
@@ -317,9 +495,10 @@ var System = {
                           return Promise.resolve();
                         });
                     }
-                })).then(function() {
-                  meta.execute();
-                  resolve(mod);
+                  })).then(function() {
+                    meta.execute();
+                    resolve(mod);
+                  });
                 });
             });
           }
@@ -364,6 +543,7 @@ var System = {
       }
       var //proxy = Object.create(null),
           // values = Object.create(null),
+          depLookup = [],
           mod;
       // creating a new entry in the internal registry
       internalRegistry[name] = mod = {
@@ -372,8 +552,18 @@ var System = {
           // exported values
           // values: values,
           // normalized deps
-          deps: deps.map(function(dep) {
-              return normalizeName(dep, name.split('/').slice(0, -1));
+          deps: new Promise(function(resolve, reject) {
+            var nDeps = [];
+            Promise.all(deps.map(function(dep) {
+              var idx = deps.indexOf(dep);
+              return normalizeName(dep, name).then(function(nName) {
+                nDeps[idx] = nName;
+                depLookup[dep] = nName;
+                return nName;
+              });
+            })).then(function() {
+              return resolve(nDeps);
+            });
           }),
           // other modules that depends on this so we can push updates into those modules
           dependants: [],
@@ -383,20 +573,34 @@ var System = {
           //     // meta.setters[mod.deps.indexOf(moduleName)](moduleObj);
           // },
           execute: function() {
-              function normalizeDepNameAndGet(depName) {
-                return get(normalizeName(depName, name.split('/').slice(0, -1))).default;
-              }
-              declare(normalizeDepNameAndGet, null, mod);
-              mod.proxy = {default: mod.exports};
-              mod.values = mod.proxy;
+            function getDep(depName) {
+              var nName = depLookup[depName];
+              var mod = get(nName);
+              return mod.default;
+            }
+            if (executingRequire) {
+              return mod.deps.then(function(nDeps) {
+                return Promise.all(nDeps.map(function(dep) {
+                    return __import(dep);
+                })).then(function() {
+                  declare(getDep, null, mod);
+                  mod.proxy = {default: mod.exports};
+                  mod.values = mod.proxy;
+                  return Promise.resolve(mod);
+                  // mod.lock = true; // locking down the updates on the module to avoid infinite loop
+                  // mod.dependants.forEach(function(moduleName) {
+                  //     if (internalRegistry[moduleName] && !internalRegistry[moduleName].lock) {
+                  //         internalRegistry[moduleName].update(name, values);
+                  //     }
+                  // });
+                  // mod.lock = false;
+                });
+              });
+            }
+            else {
+              mod.values = {default: declare()};
               return Promise.resolve(mod);
-              // mod.lock = true; // locking down the updates on the module to avoid infinite loop
-              // mod.dependants.forEach(function(moduleName) {
-              //     if (internalRegistry[moduleName] && !internalRegistry[moduleName].lock) {
-              //         internalRegistry[moduleName].update(name, values);
-              //     }
-              // });
-              // mod.lock = false;
+            }
           }
       };
     }
@@ -410,5 +614,6 @@ exports.SystemJS = System;
 System._config = systemConfig;
 System._pendingLoads = pendingLoads;
 System._pendingImports = pendingImports;
+System._extendedConfigs = extendedConfigs;
 
 })(window);
