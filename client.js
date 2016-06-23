@@ -88,26 +88,26 @@
 
 // End Object.assign polyfill
 
-var headEl = document.getElementsByTagName('head')[0],
-    ie = /MSIE/.test(navigator.userAgent);
-
-function mapPath(path, packagePath) {
-  var pkg = packagePath && systemConfig.packages[packagePath];
-
-  var mapped = (pkg && pkg.map && _mapPath(path, pkg.map)) ||
-    _mapPath(path, systemConfig.map) ||
-    path;
-
-  return mapped;
-}
-
-function _mapPath(path, map) {
-  return path && map && (_fastMapPath(path, map) || _fullMapPath(path, map));
-}
-
-function _fastMapPath(path, map) {
-  return map[path];
-}
+// var headEl = document.getElementsByTagName('head')[0],
+//     ie = /MSIE/.test(navigator.userAgent);
+//
+// function mapPath(path, packagePath) {
+//   var pkg = packagePath && systemConfig.packages[packagePath];
+//
+//   var mapped = (pkg && pkg.map && _mapPath(path, pkg.map)) ||
+//     _mapPath(path, systemConfig.map) ||
+//     path;
+//
+//   return mapped;
+// }
+//
+// function _mapPath(path, map) {
+//   return path && map && (_fastMapPath(path, map) || _fullMapPath(path, map));
+// }
+//
+// function _fastMapPath(path, map) {
+//   return map[path];
+// }
 
 function matchPrefix(path, map) {
   for (var pre in map) {
@@ -126,94 +126,84 @@ function lastPassPathSubstitution(path) {
   return _fullMapPath(path, systemConfig.paths) || path;
 }
 
-function getPackagePath(path) {
-  return matchPrefix(path, systemConfig.packages);
-}
+// function getPackagePath(path) {
+//   return matchPrefix(path, systemConfig.packages);
+// }
 
-function getPackageConfig(path) {
-  var packagePath = getPackagePath(path);
-  if (packagePath) return systemConfig.packages[packagePath];
-}
+// function getPackageConfig(path) {
+//   var packagePath = getPackagePath(path);
+//   if (packagePath) return systemConfig.packages[packagePath];
+// }
 
-function getExtension(path) {
-  var packageConfig = getPackageConfig(path);
-  var pkgDefault = packageConfig && packageConfig.defaultExtension;
-  if (pkgDefault) return pkgDefault;
-  if (systemConfig.defaultJSExtensions) return 'js';
-}
+// function getExtension(path) {
+//   var packageConfig = getPackageConfig(path);
+//   var pkgDefault = packageConfig && packageConfig.defaultExtension;
+//   if (pkgDefault) return pkgDefault;
+//   if (systemConfig.defaultJSExtensions) return 'js';
+// }
 
-function addExtension(path) {
-  if (path.match(/\.(js|html|css|json)$/)) return path;
-  var ext = getExtension(path);
-  if (ext) return path + '.' + ext;
-  return path;
-}
+// function addExtension(path) {
+//   if (path.match(/\.(js|html|css|json)$/)) return path;
+//   var ext = getExtension(path);
+//   if (ext) return path + '.' + ext;
+//   return path;
+// }
 
 function addBase(path) {
   return (systemConfig.baseURL || '/') + path;
 }
 
-function getMain(path) {
-  var pkg, main;
-  if ((pkg = systemConfig.packages[path])) {
-    if ((main = pkg.main)) {
-      return path + '/' + main;
-    }
-  }
-  return path;
-}
+// function getMain(path) {
+//   var pkg, main;
+//   if ((pkg = systemConfig.packages[path])) {
+//     if ((main = pkg.main)) {
+//       return path + '/' + main;
+//     }
+//   }
+//   return path;
+// }
 
 /*
   normalizeName() is inspired by Ember's loader:
   https://github.com/emberjs/ember.js/blob/0591740685ee2c444f2cfdbcebad0bebd89d1303/packages/loader/lib/main.js#L39-L53
  */
-function normalizeName(child, requestorPath) {
-  return new Promise(function(resolve, reject) {
-    if (child.charAt(0) === '/') {
-        child = child.slice(1);
-    }
-    if (child.charAt(0) !== '.') {
-      var extendrp = requestorPath ?
-        extendPackageConfig(requestorPath) :
-        Promise.resolve();
+// function normalizeName(child, requestorPath) {
+//   return new Promise(function(resolve, reject) {
+//     if (child.charAt(0) === '/') {
+//         child = child.slice(1);
+//     }
+//     if (child.charAt(0) !== '.') {
+//       var extendrp = requestorPath ?
+//         extendPackageConfig(requestorPath) :
+//         Promise.resolve();
+//
+//       return extendrp.then(function() {
+//         var mappedChild = mapPath(child, requestorPath);
+//         return extendPackageConfig(mappedChild).then(function() {
+//           return resolve(addExtension(getMain(mappedChild)));
+//         })
+//       });
+//     }
+//     var rpParts = requestorPath ?
+//       requestorPath.split('/').slice(0, -1) :
+//       [];
+//     var parts = child.split('/');
+//     while (parts[0] === '.' || parts[0] === '..') {
+//         if (parts.shift() === '..') {
+//             rpParts.pop();
+//         }
+//     }
+//     return resolve(addExtension(getMain(rpParts.concat(parts).join('/'))));
+//   });
+// }
 
-      return extendrp.then(function() {
-        var mappedChild = mapPath(child, requestorPath);
-        return extendPackageConfig(mappedChild).then(function() {
-          return resolve(addExtension(getMain(mappedChild)));
-        })
-      });
-        // if (requestorPath) {
-        //   return extendPackageConfig(requestorPath).then(function() {
-        //     return extendPackageConfig(child).then(function() {
-        //       return resolve(addExtension(getMain(mapPath(child, requestorPath))));
-        //     });
-        //   });
-        // }
-        // else {
-        //   return resolve(addExtension(getMain(mapPath(child))));
-        // }
-    }
-    var rpParts = requestorPath ?
-      requestorPath.split('/').slice(0, -1) :
-      [];
-    var parts = child.split('/');
-    while (parts[0] === '.' || parts[0] === '..') {
-        if (parts.shift() === '..') {
-            rpParts.pop();
-        }
-    }
-    return resolve(addExtension(getMain(rpParts.concat(parts).join('/'))));
-  });
-}
-
-var seen = Object.create(null);
+// var seen = Object.create(null);
 var internalRegistry = Object.create(null);
 var externalRegistry = Object.create(null);
 var pendingLoads = Object.create(null);
 var pendingImports = Object.create(null);
 var systemConfig = Object.create(null);
-var extendedConfigs = Object.create(null);
+// var extendedConfigs = Object.create(null);
 var anonymousEntry;
 
 // function ensuredExecute(name) {
@@ -239,72 +229,72 @@ function has(name) {
     return !!externalRegistry[name] || !!internalRegistry[name];
 }
 
-function addPackageConfigExpressions(inCfg) {
-  if (inCfg.packageConfigPaths) {
-    var patterns = inCfg.packageConfigPaths.map(function(pattern) {
-      var ext = '.json';
-      var subpaths = pattern.split('/');
-      var numSub = subpaths.length;
-      var filename = subpaths[numSub - 1].replace(ext, '');
-      if (filename.lastIndexOf('*') === filename.length - 1) {
-        subpaths[numSub - 1] = filename;
-        filename = undefined;
-      }
-      else {
-        subpaths.length = numSub - 1;
-      }
-      var exprStr = subpaths.reduce(function(head, sub) {
-        return head + sub.replace('*', '[^/]+/');
-      }, '^');
-      var expr = new RegExp(exprStr.substr(0, exprStr.length - 1));
-      var suf = filename ? '/' + filename + ext : ext;
-      return function(path) {
-        var match = path.match(expr);
-        if (match) {
-          var pkg = match[0].replace(/\.json$/, '');
-          return {
-            config: pkg + suf,
-            package: pkg
-          };
-        }
-      };
-    });
-    systemConfig.packageConfigPaths = patterns;
-  }
-}
+// function addPackageConfigExpressions(inCfg) {
+//   if (inCfg.packageConfigPaths) {
+//     var patterns = inCfg.packageConfigPaths.map(function(pattern) {
+//       var ext = '.json';
+//       var subpaths = pattern.split('/');
+//       var numSub = subpaths.length;
+//       var filename = subpaths[numSub - 1].replace(ext, '');
+//       if (filename.lastIndexOf('*') === filename.length - 1) {
+//         subpaths[numSub - 1] = filename;
+//         filename = undefined;
+//       }
+//       else {
+//         subpaths.length = numSub - 1;
+//       }
+//       var exprStr = subpaths.reduce(function(head, sub) {
+//         return head + sub.replace('*', '[^/]+/');
+//       }, '^');
+//       var expr = new RegExp(exprStr.substr(0, exprStr.length - 1));
+//       var suf = filename ? '/' + filename + ext : ext;
+//       return function(path) {
+//         var match = path.match(expr);
+//         if (match) {
+//           var pkg = match[0].replace(/\.json$/, '');
+//           return {
+//             config: pkg + suf,
+//             package: pkg
+//           };
+//         }
+//       };
+//     });
+//     systemConfig.packageConfigPaths = patterns;
+//   }
+// }
 
 function config(inCfg) {
-  ['map', 'packages', 'paths', 'browserConfig'].forEach(function(prop) {
+  [/*'map', 'packages', */'paths'/*, 'browserConfig'*/].forEach(function(prop) {
     systemConfig[prop] = systemConfig[prop] || {};
     assign(systemConfig[prop], inCfg[prop]);
   });
 
   if (inCfg.baseURL) systemConfig.baseURL = inCfg.baseURL;
-  if (inCfg.defaultJSExtensions) systemConfig.defaultJSExtensions = inCfg.defaultJSExtensions;
+  // if (inCfg.defaultJSExtensions) systemConfig.defaultJSExtensions = inCfg.defaultJSExtensions;
 
-  addPackageConfigExpressions(inCfg);
+  // addPackageConfigExpressions(inCfg);
 }
 
-function createScriptNode(src, callback) {
-    var node = document.createElement('script');
-    // use async=false for ordered async?
-    // parallel-load-serial-execute http://wiki.whatwg.org/wiki/Dynamic_Script_Execution_Order
-    if (node.async) {
-        node.async = false;
-    }
-    if (ie) {
-        node.onreadystatechange = function() {
-            if (/loaded|complete/.test(this.readyState)) {
-                this.onreadystatechange = null;
-                callback();
-            }
-        };
-    } else {
-        node.onload = node.onerror = callback;
-    }
-    node.setAttribute('src', src);
-    headEl.appendChild(node);
-}
+// function createScriptNode(src, callback) {
+//     var node = document.createElement('script');
+//     // use async=false for ordered async?
+//     // parallel-load-serial-execute http://wiki.whatwg.org/wiki/Dynamic_Script_Execution_Order
+//     if (node.async) {
+//         node.async = false;
+//     }
+//     if (ie) {
+//         node.onreadystatechange = function() {
+//             if (/loaded|complete/.test(this.readyState)) {
+//                 this.onreadystatechange = null;
+//                 callback();
+//             }
+//         };
+//     } else {
+//         node.onload = node.onerror = callback;
+//     }
+//     node.setAttribute('src', src);
+//     headEl.appendChild(node);
+// }
 
 function AJAX(url, callback) {
   var r = new XMLHttpRequest();
@@ -323,41 +313,41 @@ function AJAX(url, callback) {
   r.send();
 }
 
-function mergeConfig(pkgName, inCfgModule) {
-  var cfg = systemConfig.packages[pkgName] || {};
-  systemConfig.packages[pkgName] = cfg;
-  var inCfg = inCfgModule.default;
-  for (var prop in inCfg) {
-    var inVal = inCfg[prop];
-    if (typeof inVal === 'object') {
-      cfg[prop] = assign(cfg[prop] || {}, inVal);
-    }
-    else {
-      cfg[prop] = inVal;
-    }
-  }
-  console.log(systemConfig.packages[pkgName]);
-}
+// function mergeConfig(pkgName, inCfgModule) {
+//   var cfg = systemConfig.packages[pkgName] || {};
+//   systemConfig.packages[pkgName] = cfg;
+//   var inCfg = inCfgModule.default;
+//   for (var prop in inCfg) {
+//     var inVal = inCfg[prop];
+//     if (typeof inVal === 'object') {
+//       cfg[prop] = assign(cfg[prop] || {}, inVal);
+//     }
+//     else {
+//       cfg[prop] = inVal;
+//     }
+//   }
+//   console.log(systemConfig.packages[pkgName]);
+// }
 
-function extendPackageConfig(name) {
-  var pcps = systemConfig.packageConfigPaths;
-  // if (!pcps) return Promise.reject();
-  if (!pcps) return Promise.resolve();
-  var num = pcps ? pcps.length : 0;
-  for (var i = 0; i < num; i++) {
-    var match = pcps[i](name);
-    if (match && match.config !== name) {
-      if (!extendedConfigs[match.package]) {
-        extendedConfigs[match.package] = _import(match.config).then(function(cfgModule) {
-          mergeConfig(match.package, cfgModule);
-        });
-      }
-      return extendedConfigs[match.package];
-    }
-  }
-  // return Promise.reject();
-  return Promise.resolve();
-}
+// function extendPackageConfig(name) {
+//   var pcps = systemConfig.packageConfigPaths;
+//   // if (!pcps) return Promise.reject();
+//   if (!pcps) return Promise.resolve();
+//   var num = pcps ? pcps.length : 0;
+//   for (var i = 0; i < num; i++) {
+//     var match = pcps[i](name);
+//     if (match && match.config !== name) {
+//       if (!extendedConfigs[match.package]) {
+//         extendedConfigs[match.package] = _import(match.config).then(function(cfgModule) {
+//           mergeConfig(match.package, cfgModule);
+//         });
+//       }
+//       return extendedConfigs[match.package];
+//     }
+//   }
+//   // return Promise.reject();
+//   return Promise.resolve();
+// }
 
 function load(name) {
     if (pendingLoads[name]) return pendingLoads[name];
@@ -370,14 +360,6 @@ function load(name) {
               /*jshint -W054 */
               var f = new Function('System', content);
               f(System);
-              // if (ext === '.js') {
-              //   /*jshint -W054 */
-              //   var f = new Function('System', content);
-              //   f(System);
-              // }
-              // if (ext === '.json') {
-              //   resolve(JSON.parse(content));
-              // }
             }
             catch (e) {
               console.log(name, path, e);
@@ -391,20 +373,25 @@ function load(name) {
             if (!mod) {
                 return reject(new Error('Error loading module ' + name));
             }
-            return mod.deps.then(function(nDeps) {
-              Promise.all(nDeps.map(function(dep) {
-                return load(dep);
-              })).then(function() {
-                resolve(mod);
-              });
+            return Promise.all(mod.deps.map(function(dep) {
+              return load(dep);
+            })/*)*/).then(function() {
+              resolve(mod);
             });
+            // return mod.deps.then(function(nDeps) {
+            //   Promise.all(nDeps.map(function(dep) {
+            //     return load(dep);
+            //   })).then(function() {
+            //     resolve(mod);
+            //   });
+            // });
         });
     });
     return pendingLoads[name];
 }
 
-function __import(name) {
-    return normalizeName(name).then(function(nName) {
+function __import(nName/*name*/) {
+    // return normalizeName(name).then(function(nName) {
       if (pendingImports[nName]) {
         return pendingImports[nName];
       }
@@ -428,7 +415,7 @@ function __import(name) {
             });
       });
       return pendingImports[nName];
-    });
+    // });
 }
 
 function _import(name) {
@@ -459,31 +446,33 @@ var System = {
             proxy: proxy,
             // exported values
             values: values,
+            deps: deps,
             // normalized deps
-            deps: new Promise(function(resolve, reject) {
-              var nDeps = [];
-              Promise.all(deps.map(function(dep) {
-                var idx = deps.indexOf(dep);
-                return normalizeName(dep, name).then(function(nName) {
-                  nDeps[idx] = nName;
-                  return nName;
-                });
-              })).then(function() {
-                return resolve(nDeps);
-              });
-            }),
+            // deps: new Promise(function(resolve, reject) {
+            //   var nDeps = [];
+            //   Promise.all(deps.map(function(dep) {
+            //     var idx = deps.indexOf(dep);
+            //     return normalizeName(dep, name).then(function(nName) {
+            //       nDeps[idx] = nName;
+            //       return nName;
+            //     });
+            //   })).then(function() {
+            //     return resolve(nDeps);
+            //   });
+            // }),
             // other modules that depends on this so we can push updates into those modules
             dependants: [],
             // method used to push updates of deps into the module body
             update: function(moduleName, moduleObj) {
-                mod.deps.then(function(nDeps) {
-                  meta.setters[nDeps.indexOf(moduleName)](moduleObj);
-                });
+                // mod.deps.then(function(nDeps) {
+                //   meta.setters[nDeps.indexOf(moduleName)](moduleObj);
+                // });
+                meta.setters[deps.indexOf(moduleName)](moduleObj);
             },
             execute: function() {
-              return new Promise(function(resolve, reject) {
-                return mod.deps.then(function(nDeps) {
-                  return Promise.all(nDeps.map(function(depName) {
+              // return new Promise(function(resolve, reject) {
+              //   return mod.deps.then(function(nDeps) {
+                  return Promise.all(deps.map(function(depName) {
                     var dep = externalRegistry[depName];
                     if (dep) {
                         mod.update(depName, dep.values);
@@ -497,10 +486,10 @@ var System = {
                     }
                   })).then(function() {
                     meta.execute();
-                    resolve(mod);
+                    return Promise.resolve(mod);
                   });
-                });
-            });
+            //     });
+            // });
           }
         };
         // collecting execute() and setters[]
@@ -543,7 +532,7 @@ var System = {
       }
       var //proxy = Object.create(null),
           // values = Object.create(null),
-          depLookup = [],
+          // depLookup = [],
           mod;
       // creating a new entry in the internal registry
       internalRegistry[name] = mod = {
@@ -551,20 +540,21 @@ var System = {
           // proxy: values,
           // exported values
           // values: values,
+          deps: deps,
           // normalized deps
-          deps: new Promise(function(resolve, reject) {
-            var nDeps = [];
-            Promise.all(deps.map(function(dep) {
-              var idx = deps.indexOf(dep);
-              return normalizeName(dep, name).then(function(nName) {
-                nDeps[idx] = nName;
-                depLookup[dep] = nName;
-                return nName;
-              });
-            })).then(function() {
-              return resolve(nDeps);
-            });
-          }),
+          // deps: new Promise(function(resolve, reject) {
+          //   var nDeps = [];
+          //   Promise.all(deps.map(function(dep) {
+          //     var idx = deps.indexOf(dep);
+          //     return normalizeName(dep, name).then(function(nName) {
+          //       nDeps[idx] = nName;
+          //       depLookup[dep] = nName;
+          //       return nName;
+          //     });
+          //   })).then(function() {
+          //     return resolve(nDeps);
+          //   });
+          // }),
           // other modules that depends on this so we can push updates into those modules
           dependants: [],
           // method used to push updates of deps into the module body
@@ -574,13 +564,14 @@ var System = {
           // },
           execute: function() {
             function getDep(depName) {
-              var nName = depLookup[depName];
-              var mod = get(nName);
+              // var nName = depLookup[depName];
+              // var mod = get(nName);
+              var mod = get(depName);
               return mod.default;
             }
             if (executingRequire) {
-              return mod.deps.then(function(nDeps) {
-                return Promise.all(nDeps.map(function(dep) {
+              // return mod.deps.then(function(nDeps) {
+                return Promise.all(deps.map(function(dep) {
                     return __import(dep);
                 })).then(function() {
                   declare(getDep, null, mod);
@@ -595,7 +586,7 @@ var System = {
                   // });
                   // mod.lock = false;
                 });
-              });
+              // });
             }
             else {
               mod.values = {default: declare()};
@@ -614,6 +605,6 @@ exports.SystemJS = System;
 System._config = systemConfig;
 System._pendingLoads = pendingLoads;
 System._pendingImports = pendingImports;
-System._extendedConfigs = extendedConfigs;
+// System._extendedConfigs = extendedConfigs;
 
 })(window);
