@@ -1,95 +1,7 @@
 (function(exports) {
-  // Begin Object.assign polyfill
-  // from https://github.com/sindresorhus/object-assign
 
-  'use strict';
-  /* eslint-disable no-unused-vars */
-  var hasOwnProperty = Object.prototype.hasOwnProperty;
-  var propIsEnumerable = Object.prototype.propertyIsEnumerable;
-
-  function toObject(val) {
-  	if (val === null || val === undefined) {
-  		throw new TypeError('Object.assign cannot be called with null or undefined');
-  	}
-
-  	return Object(val);
-  }
-
-  function shouldUseNative() {
-  	try {
-  		if (!Object.assign) {
-  			return false;
-  		}
-
-  		// Detect buggy property enumeration order in older V8 versions.
-
-  		// https://bugs.chromium.org/p/v8/issues/detail?id=4118
-  		var test1 = 'abc';  // eslint-disable-line
-  		test1[5] = 'de';
-  		if (Object.getOwnPropertyNames(test1)[0] === '5') {
-  			return false;
-  		}
-
-  		// https://bugs.chromium.org/p/v8/issues/detail?id=3056
-  		var test2 = {};
-  		for (var i = 0; i < 10; i++) {
-  			test2['_' + String.fromCharCode(i)] = i;
-  		}
-  		var order2 = Object.getOwnPropertyNames(test2).map(function (n) {
-  			return test2[n];
-  		});
-  		if (order2.join('') !== '0123456789') {
-  			return false;
-  		}
-
-  		// https://bugs.chromium.org/p/v8/issues/detail?id=3056
-  		var test3 = {};
-  		'abcdefghijklmnopqrst'.split('').forEach(function (letter) {
-  			test3[letter] = letter;
-  		});
-  		if (Object.keys(Object.assign({}, test3)).join('') !==
-  				'abcdefghijklmnopqrst') {
-  			return false;
-  		}
-
-  		return true;
-  	} catch (e) {
-  		// We don't expect any of the above to throw, but better to be safe.
-  		return false;
-  	}
-  }
-
-  var assign = shouldUseNative() ? Object.assign : function (target, source) {
-  	var from;
-  	var to = toObject(target);
-  	var symbols;
-
-  	for (var s = 1; s < arguments.length; s++) {
-  		from = Object(arguments[s]);
-
-  		for (var key in from) {
-  			if (hasOwnProperty.call(from, key)) {
-  				to[key] = from[key];
-  			}
-  		}
-
-  		if (Object.getOwnPropertySymbols) {
-  			symbols = Object.getOwnPropertySymbols(from);
-  			for (var i = 0; i < symbols.length; i++) {
-  				if (propIsEnumerable.call(from, symbols[i])) {
-  					to[symbols[i]] = from[symbols[i]];
-  				}
-  			}
-  		}
-  	}
-
-  	return to;
-  };
-
-// End Object.assign polyfill
-
-// var headEl = document.getElementsByTagName('head')[0],
-//     ie = /MSIE/.test(navigator.userAgent);
+var headEl = document.getElementsByTagName('head')[0],
+    ie = /MSIE/.test(navigator.userAgent);
 //
 // function mapPath(path, packagePath) {
 //   var pkg = packagePath && systemConfig.packages[packagePath];
@@ -202,6 +114,7 @@ var internalRegistry = Object.create(null);
 var externalRegistry = Object.create(null);
 var pendingLoads = Object.create(null);
 var pendingImports = Object.create(null);
+var pendingExecutions = Object.create(null);
 var systemConfig = Object.create(null);
 // var extendedConfigs = Object.create(null);
 var anonymousEntry;
@@ -266,7 +179,7 @@ function has(name) {
 function config(inCfg) {
   [/*'map', 'packages', */'paths'/*, 'browserConfig'*/].forEach(function(prop) {
     systemConfig[prop] = systemConfig[prop] || {};
-    assign(systemConfig[prop], inCfg[prop]);
+    Object.assign(systemConfig[prop], inCfg[prop]);
   });
 
   if (inCfg.baseURL) systemConfig.baseURL = inCfg.baseURL;
@@ -275,43 +188,43 @@ function config(inCfg) {
   // addPackageConfigExpressions(inCfg);
 }
 
-// function createScriptNode(src, callback) {
-//     var node = document.createElement('script');
-//     // use async=false for ordered async?
-//     // parallel-load-serial-execute http://wiki.whatwg.org/wiki/Dynamic_Script_Execution_Order
-//     if (node.async) {
-//         node.async = false;
-//     }
-//     if (ie) {
-//         node.onreadystatechange = function() {
-//             if (/loaded|complete/.test(this.readyState)) {
-//                 this.onreadystatechange = null;
-//                 callback();
-//             }
-//         };
-//     } else {
-//         node.onload = node.onerror = callback;
-//     }
-//     node.setAttribute('src', src);
-//     headEl.appendChild(node);
-// }
-
-function AJAX(url, callback) {
-  var r = new XMLHttpRequest();
-  r.onreadystatechange = function() {
-    if (r.readyState === XMLHttpRequest.DONE) {
-      if (r.status === 200) {
-        callback(r.responseText);
-      }
-      else {
-        console.log('waah.', r.status);
-        // callback(new Error());
-      }
+function createScriptNode(src, callback) {
+    var node = document.createElement('script');
+    // use async=false for ordered async?
+    // parallel-load-serial-execute http://wiki.whatwg.org/wiki/Dynamic_Script_Execution_Order
+    if (node.async) {
+        node.async = false;
     }
-  };
-  r.open('GET', url);
-  r.send();
+    if (ie) {
+        node.onreadystatechange = function() {
+            if (/loaded|complete/.test(this.readyState)) {
+                this.onreadystatechange = null;
+                callback();
+            }
+        };
+    } else {
+        node.onload = node.onerror = callback;
+    }
+    node.setAttribute('src', src);
+    headEl.appendChild(node);
 }
+
+// function AJAX(url, callback) {
+//   var r = new XMLHttpRequest();
+//   r.onreadystatechange = function() {
+//     if (r.readyState === XMLHttpRequest.DONE) {
+//       if (r.status === 200) {
+//         callback(r.responseText);
+//       }
+//       else {
+//         console.log('waah.', r.status);
+//         // callback(new Error());
+//       }
+//     }
+//   };
+//   r.open('GET', url);
+//   r.send();
+// }
 
 // function mergeConfig(pkgName, inCfgModule) {
 //   var cfg = systemConfig.packages[pkgName] || {};
@@ -320,7 +233,7 @@ function AJAX(url, callback) {
 //   for (var prop in inCfg) {
 //     var inVal = inCfg[prop];
 //     if (typeof inVal === 'object') {
-//       cfg[prop] = assign(cfg[prop] || {}, inVal);
+//       cfg[prop] = Object.assign(cfg[prop] || {}, inVal);
 //     }
 //     else {
 //       cfg[prop] = inVal;
@@ -353,18 +266,17 @@ function load(name) {
     if (pendingLoads[name]) return pendingLoads[name];
     var path = addBase(lastPassPathSubstitution(name));
     pendingLoads[name] = new Promise(function(resolve, reject) {
-        // createScriptNode(path, function(err) {
-        AJAX(path, function(content) {
-            if (content instanceof Error) return reject(content);
-            try {
-              /*jshint -W054 */
-              var f = new Function('System', content);
-              f(System);
-            }
-            catch (e) {
-              console.log(name, path, e);
-              return reject(e);
-            }
+        createScriptNode(path, function(err) {
+        // AJAX(path, function(content) {
+            // if (content instanceof Error) return reject(content);
+            // try {
+            //   /*jshint -W054 */
+            //   var f = new Function('System', content);
+            //   f(System);
+            // }
+            // catch (e) {
+            //   return reject(e);
+            // }
             if (anonymousEntry) {
                 System.register(name, anonymousEntry[0], anonymousEntry[1]);
                 anonymousEntry = undefined;
@@ -373,17 +285,11 @@ function load(name) {
             if (!mod) {
                 return reject(new Error('Error loading module ' + name));
             }
-            return Promise.all(mod.deps.map(function(dep) {
-              return load(dep);
-            })/*)*/).then(function() {
-              resolve(mod);
-            });
-            // return mod.deps.then(function(nDeps) {
-            //   Promise.all(nDeps.map(function(dep) {
-            //     return load(dep);
-            //   })).then(function() {
-            //     resolve(mod);
-            //   });
+            return resolve(mod);
+            // return Promise.all(mod.deps.map(function(dep) {
+            //   return __import(dep);
+            // })/*)*/).then(function() {
+            //   resolve(mod);
             // });
         });
     });
@@ -400,11 +306,19 @@ function __import(nName/*name*/) {
           if (ext) resolve(ext);
 
           var int = internalRegistry[nName];
-          if (int) return resolve(int.execute());
+          if (int) {
+            return int.execute().then(function (executed) {
+              // internalRegistry[nName] = executed;
+              return resolve(executed);
+            });
+          }
 
           return load(nName)
             .then(function(loaded) {
-                resolve(loaded.execute());
+              return loaded.execute().then(function (executed) {
+                // internalRegistry[nName] = executed;
+                return resolve(executed);
+              });
             })
             .catch(function(reason) {
               console.log('load failed');
@@ -431,6 +345,10 @@ var System = {
     config: config,
     import: _import,
     register: function(name, deps, wrapper) {
+        if (internalRegistry[name]) {
+          console.warn('Duplicate registration: ' + name);
+          return;
+        }
         if (Array.isArray(name)) {
             // anounymous module
             anonymousEntry = [];
@@ -442,6 +360,7 @@ var System = {
             mod, meta;
         // creating a new entry in the internal registry
         internalRegistry[name] = mod = {
+            name: name,
             // live bindings
             proxy: proxy,
             // exported values
@@ -472,7 +391,9 @@ var System = {
             execute: function() {
               // return new Promise(function(resolve, reject) {
               //   return mod.deps.then(function(nDeps) {
-                  return Promise.all(deps.map(function(depName) {
+                  if (pendingExecutions[name]) return pendingExecutions[name];
+
+                  pendingExecutions[name] = Promise.all(deps.map(function(depName) {
                     var dep = externalRegistry[depName];
                     if (dep) {
                         mod.update(depName, dep.values);
@@ -488,6 +409,8 @@ var System = {
                     meta.execute();
                     return Promise.resolve(mod);
                   });
+
+                  return pendingExecutions[name];
             //     });
             // });
           }
@@ -524,6 +447,10 @@ var System = {
         });
     },
     registerDynamic: function(name, deps, executingRequire, declare) {
+      if (internalRegistry[name]) {
+        console.warn('Duplicate registration: ' + name);
+        return;
+      }
       if (Array.isArray(name)) {
           // anounymous module
           anonymousEntry = [];
@@ -536,6 +463,7 @@ var System = {
           mod;
       // creating a new entry in the internal registry
       internalRegistry[name] = mod = {
+          name: name,
           // live bindings
           // proxy: values,
           // exported values
@@ -566,12 +494,14 @@ var System = {
             function getDep(depName) {
               // var nName = depLookup[depName];
               // var mod = get(nName);
-              var mod = get(depName);
-              return mod.default;
+              var depMod = get(depName);
+              return depMod.default;
             }
+            if (pendingExecutions[name]) return pendingExecutions[name];
+
             if (executingRequire) {
               // return mod.deps.then(function(nDeps) {
-                return Promise.all(deps.map(function(dep) {
+                pendingExecutions[name] = Promise.all(deps.map(function(dep) {
                     return __import(dep);
                 })).then(function() {
                   declare(getDep, null, mod);
@@ -590,8 +520,10 @@ var System = {
             }
             else {
               mod.values = {default: declare()};
-              return Promise.resolve(mod);
+              pendingExecutions[name] = Promise.resolve(mod);
             }
+
+            return pendingExecutions[name];
           }
       };
     }
@@ -605,6 +537,8 @@ exports.SystemJS = System;
 System._config = systemConfig;
 System._pendingLoads = pendingLoads;
 System._pendingImports = pendingImports;
+System._pendingExecutions = pendingExecutions;
+System._internalRegistry = internalRegistry;
 // System._extendedConfigs = extendedConfigs;
 
 })(window);
